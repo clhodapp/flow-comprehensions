@@ -77,7 +77,9 @@ case object Normalize extends Transform {
       Rule("extract in if condition") {
         case v@q"$mods val $nme: $tpe = if ($cond) $ifTrue else $ifFalse" if hasExtracts(cond) =>
           val tmpNme = TermName(macroContext.freshName("anon"))
-          val newValDef = q"$mods val $nme: $tpe = if ($tmpNme) $ifTrue else $ifFalse"
+          val tmpIdent = Ident(tmpNme)
+          internal.setType(tmpIdent, cond.tpe)
+          val newValDef = q"$mods val $nme: $tpe = if ($tmpIdent) $ifTrue else $ifFalse"
           internal.setSymbol(newValDef, v.symbol)
           RewriteTo(q"""
             val $tmpNme = $cond
@@ -117,35 +119,39 @@ case object Normalize extends Transform {
             $newValDef
           """)
       },
-      Rule("extract in if true branch") {
-        case v@q"$mods val $nme: $tpe = if ($cond) $ifTrue else $ifFalse" if hasExtracts(ifTrue) =>
-          val newIfTrue = Extract(
-            macroContext.typecheck(
-              tree=recur(ifTrue),
-              pt=appliedType(M, ifTrue.tpe)
-            ),
-            TypeTree(ifTrue.tpe)
-          )
-          val newValDef = q"""$mods val $nme: $tpe = if ($cond) $newIfTrue else $ifFalse"""
+      Rule("raw extract in if true branch") {
+        case v@q"$mods val $nme: $tpe = if ($cond) ${Extract(trueBody, trueTpt)} else $ifFalse" =>
+          val newIfFalse = liftM(ifFalse)
+          val lubTpt = TypeTree(lub(List(trueTpt.tpe, ifFalse.tpe)))
+          val newValDef = q"""$mods val $nme: $tpe = ${Extract(q"if ($cond) $trueBody else $newIfFalse", lubTpt)}"""
           internal.setSymbol(newValDef, v.symbol)
           RewriteTo(q"""
             $newValDef
           """)
       },
-      Rule("extract in if false branch") {
-        case v@q"$mods val $nme: $tpe = if ($cond) $ifTrue else $ifFalse" if hasExtracts(ifFalse) =>
-          val newIfFalse = Extract(
-            macroContext.typecheck(
-              tree=recur(ifFalse),
-              pt=appliedType(M, ifFalse.tpe)
-            ),
-            TypeTree(ifFalse.tpe)
-          )
-          val newValDef = q"""$mods val $nme: $tpe = if ($cond) $ifTrue else $newIfFalse"""
+      Rule("raw extract in if false branch") {
+        case v@q"$mods val $nme: $tpe = if ($cond) $ifTrue else ${Extract(falseBody, falseTpt)}" =>
+          val newIfTrue = liftM(ifTrue)
+          val lubTpt = TypeTree(lub(List(ifTrue.tpe, falseTpt.tpe)))
+          val newValDef = q"""$mods val $nme: $tpe = ${Extract(q"if ($cond) $newIfTrue else $falseBody", lubTpt)}"""
           internal.setSymbol(newValDef, v.symbol)
           RewriteTo(q"""
             $newValDef
           """)
+      },
+      Rule("extract in if true branch") {
+        case v@q"$mods val $nme: $tpe = if ($cond) $ifTrue else $ifFalse" if hasExtracts(ifTrue) && !isExtract(ifTrue) =>
+          val newIfTrue = Extract(recur(ifTrue), TypeTree(ifTrue.tpe))
+          val newValDef = q"""$mods val $nme: $tpe = if ($cond) $newIfTrue else $ifFalse"""
+          internal.setSymbol(newValDef, v.symbol)
+          RewriteTo(newValDef)
+      },
+      Rule("extract in if false branch") {
+        case v@q"$mods val $nme: $tpe = if ($cond) $ifTrue else $ifFalse" if hasExtracts(ifFalse) && !isExtract(ifFalse) =>
+          val newIfFalse = Extract(recur(ifFalse), TypeTree(ifFalse.tpe))
+          val newValDef = q"""$mods val $nme: $tpe = if ($cond) $ifTrue else $newIfFalse"""
+          internal.setSymbol(newValDef, v.symbol)
+          RewriteTo(newValDef)
       },
       Rule("extract in argument in argument to infix function") {
         case v@q"$mods val $nme: $tpe = $pre.$op[..$targs](...$vargss)" if vargss.exists(_.exists(hasExtracts)) =>

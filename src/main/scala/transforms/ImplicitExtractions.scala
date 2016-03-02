@@ -9,6 +9,7 @@ case object ImplicitExtractions extends Transform {
   override def rules[C <: blackbox.Context](transformContext: TransformContext[C]): List[transformContext.Rule] = {
     import transformContext._
     import macroContext.universe._
+    import visualizer._
     List(
       Rule("don't change return") {
         case Ident(i) if i.encodedName.toString == returnName.encodedName.toString => Accept
@@ -17,9 +18,10 @@ case object ImplicitExtractions extends Transform {
         case d: ValOrDefDef => Accept
       },
       Rule("extract") {
-        case t if t.tpe != null && t.tpe.typeSymbol != null && t.tpe.typeSymbol == M.typeSymbol =>
-          val tpe = M.typeSymbol.typeSignatureIn(t.tpe)
-          val extracted = Extract(t, TypeTree())
+        case t if (t.tpe baseType M.typeSymbol) != NoType =>
+          val extractedType = (t.tpe baseType M.typeSymbol).typeArgs(0)
+          visualize("t" -> TypeTree(t.tpe), "M" -> TypeTree(M), "extractedType" -> TypeTree(extractedType))
+          val extracted = Extract(t, TypeTree(extractedType))
           RewriteTo(extracted)
       },
       Rule("don't change") {

@@ -119,11 +119,18 @@ class FlowMacros(val c: blackbox.Context) {
 
   def transform[M: WeakTypeTag, T: WeakTypeTag](returnName: Tree)(transforms: Tree*)(comprehension: Tree): Tree = {
     comprehension match {
-      case q"($ctxNme: $tpe) => $body" =>
+      case q"($ctxParam) => $body" =>
         val m = weakTypeOf[M].typeConstructor
         val returnNme = returnName match {
           case Literal(Constant(nme: String)) => TermName(nme)
           case _ => c.abort(returnName.pos, "return name must be a String literal")
+        }
+        val ctxNme = ctxParam.name
+        val ctxTree = {
+          val t = Ident(ctxParam.name)
+          internal.setSymbol(t, ctxParam.symbol)
+          internal.setType(t, ctxParam.tpt.tpe)
+          t
         }
         transforms match {
           case Nil =>
@@ -149,6 +156,7 @@ class FlowMacros(val c: blackbox.Context) {
                 val utils = new TransformUtils[c.type](c) {
                   val M: Type = m.typeConstructor
                   val contextName: TermName = ctxNme
+                  val contextTree: Tree = ctxTree
                 }
                 import utils._
 
@@ -177,6 +185,7 @@ class FlowMacros(val c: blackbox.Context) {
                       val ctx = new TransformContext[c.type](c) {
                         val M: Type = m.typeConstructor
                         val contextName: TermName = ctxNme
+                        val contextTree: Tree = ctxTree
                         val returnName = returnNme
                         val returnType = body.tpe
                         def recur(t: Tree): Tree = {
@@ -197,7 +206,13 @@ class FlowMacros(val c: blackbox.Context) {
                             println(s"""$step - transformed to $withCorrectReturnValue"""")
                             println(s"""$step - beginning recurrence"""")
                           }
-                          traverse(Nil, withCorrectReturnValue.shard, step.sub)
+                          val tree = q"""
+                            _root_.org.cvogt.flow.flat[$M] { ($contextTree: ${TypeTree()}) => $t }
+                          """
+                          c.typecheck(
+                            pt = appliedType(M, t.tpe),
+                            tree = tree
+                          )
                         }
                       }
                       import ctx._
@@ -422,8 +437,12 @@ class FlowMacros(val c: blackbox.Context) {
         val paramName = TermName(c.freshName("ctx"))
         q"($paramName: ${TypeTree()}) => $transformed"
     }
-    c.untypecheck(withParam) match {
-      case q"($ctxParam) => $body" =>
+    withParam match {
+      case u@q"($ctxParam) => $body" =>
+
+        val ctxTree = Ident(ctxParam.name)
+        internal.setSymbol(ctxTree, ctxParam.symbol)
+        internal.setType(ctxTree, ctxParam.tpt.tpe)
 
         if (verbose) {
           println(s"transformed to: $body")
@@ -432,6 +451,7 @@ class FlowMacros(val c: blackbox.Context) {
         val utils = new TransformUtils[c.type](c) {
           val M = weakTypeOf[M].typeConstructor
           val contextName = ctxParam.name
+          val contextTree: c.Tree = ctxTree
         }
         import utils._
 
@@ -444,6 +464,7 @@ class FlowMacros(val c: blackbox.Context) {
 
         val withCorrectReturnValue = {
           val lines = nonEmptyBody.shard
+          internal.setType(lines.last, weakTypeOf[T])
           (lines.init :+ q"val $returnName = ${liftM(lines.last)}" :+ q"$returnName").unify
         }
 

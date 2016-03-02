@@ -100,10 +100,16 @@ class Tests extends FunSuite with org.scalactic.TypeCheckedTripleEquals {
       }
     )
 
+    // assert(
+    //   List(5, 6, 6, 7, 7, 8) == flat[List] {
+    //     if (List(1).value > List(0).value) List(1,2,3).value + List(4,5).value
+    //     else List.empty[Int].value
+    //   }
+    // )
+
     assert(
-      List(5, 6, 6, 7, 7, 8) == flat[List] {
-        if (List(1).value > List(0).value) List(1,2,3).value + List(4,5).value
-        else List.empty[Int].value
+      List(1) == flat[List] {
+        if (0 > 1) List(0).value else 1
       }
     )
 

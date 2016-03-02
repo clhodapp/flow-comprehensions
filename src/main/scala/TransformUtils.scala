@@ -14,9 +14,26 @@ abstract class TransformUtils[C <: blackbox.Context](val macroContext: C) {
 
   val M: Type
   val contextName: TermName
+  val contextTree: Tree
 
   def liftM(t: Tree): Tree = {
-    q"implicitly[Construct[$M]].create($t)"
+    val constructType = appliedType(typeOf[Construct[List]].typeConstructor, M)
+    val pre = macroContext.inferImplicitValue(
+      pt = appliedType(typeOf[Construct[List]].typeConstructor, M),
+      silent = true
+    )
+    if (pre == EmptyTree) macroContext.abort(t.pos, s"Could not find an implicit $constructType")
+    val createSym = constructType.member(TermName("create"))
+    val selectCreate = q"$pre.create"
+    internal.setSymbol(selectCreate, createSym)
+    internal.setType(selectCreate, createSym.typeSignatureIn(constructType))
+    val withTParam = q"$selectCreate[${t.tpe}]"
+    internal.setSymbol(withTParam, createSym)
+    internal.setType(withTParam, appliedType(createSym.typeSignatureIn(constructType), t.tpe))
+    val withVParam = q"$withTParam($t)"
+    internal.setSymbol(withVParam, createSym)
+    internal.setType(withVParam, appliedType(M, t.tpe))
+    withVParam
   }
 
   def hasExtracts(t: Tree): Boolean = {
@@ -38,7 +55,24 @@ abstract class TransformUtils[C <: blackbox.Context](val macroContext: C) {
   def noExtracts(t: Tree): Boolean = !hasExtracts(t)
 
   object Extract {
-    def apply(body: Tree, tpe: Tree): Tree = q"$contextName.?[$tpe]($body)"
+    def apply(body: Tree, tpt: Tree): Tree = {
+      val qmarkSymbol = contextTree.tpe.member(TermName("?").encodedName)
+      val selectQmark = q"$contextTree.?"
+      internal.setSymbol(selectQmark, qmarkSymbol)
+      internal.setType(selectQmark, qmarkSymbol.typeSignature)
+      val withTParam = q"$selectQmark[$tpt]"
+      internal.setSymbol(withTParam , qmarkSymbol)
+      internal.setType(withTParam , appliedType(qmarkSymbol.typeSignature, M))
+      val withVParam = q"$withTParam($body)"
+      internal.setSymbol(withVParam , qmarkSymbol)
+      internal.setType(withVParam , tpt.tpe)
+      withVParam
+    }
+    def apply2(body: Tree, tpe: Tree): Tree = {
+      val tree = q"$contextName.?[$tpe]($body)"
+      internal.setType(tree, tpe.tpe)
+      tree
+    }
     def unapply(t: Tree): Option[(Tree, Tree)] = t match {
       case q"$contextName.?[$tpe]($body)" => Some((body, tpe))
       case q"$contextName.?($body)" => Some((body, TypeTree()))

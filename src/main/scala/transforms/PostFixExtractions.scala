@@ -14,7 +14,8 @@ case object PostfixExtractions extends Transform {
     import visualizer._
     val transformer = new Transformer {
       override def transform(t: Tree) = t match {
-        case PostfixExtract(body, tpe) => q"$contextName.?[${super.transform(tpe)}](${super.transform(body)})"
+        case PostfixExtract(body, tpe) =>
+          Extract(body, super.transform(tpe))
         case other => super.transform(other)
       }
     }
