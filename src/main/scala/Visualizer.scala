@@ -10,19 +10,19 @@ class Visualizer[C <: blackbox.Context](val macroContext: C) {
   import universe._
 
   def visualize(trees: (String, Tree)*): Unit = {
-    val global = macroContext.universe.asInstanceOf[tools.nsc.Global]
-    val gTrees = trees.toMap.mapValues(_.asInstanceOf[global.Tree])
-    val locks = gTrees.mapValues(_ => new scala.concurrent.Lock)
-    import global.treeBrowsers._
-    gTrees.map { case (name, tree) =>
-      val frame = new BrowserFrame(name) {
-        UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName)
-      }
-      val model = new ASTTreeModel(tree)
-      frame.setTreeModel(model)
-      frame.createFrame(locks(name))
-    }
-    locks.values.foreach(_.acquire)
+    // val global = macroContext.universe.asInstanceOf[tools.nsc.Global]
+    // val gTrees = trees.toMap.mapValues(_.asInstanceOf[global.Tree])
+    // val locks = gTrees.mapValues(_ => new scala.concurrent.Lock)
+    // import global.treeBrowsers._
+    // gTrees.map { case (name, tree) =>
+    //   val frame = new BrowserFrame(name) {
+    //     UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName)
+    //   }
+    //   val model = new ASTTreeModel(tree)
+    //   frame.setTreeModel(model)
+    //   frame.createFrame(locks(name))
+    // }
+    // locks.values.foreach(_.acquire)
   }
 
 }
